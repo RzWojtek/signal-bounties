@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>SIGNAL BOUNTIES — AI Work Terminal</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap');
+
+*{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:#07070f;
+  --surface:#0d0d1a;
+  --panel:#0a0a18;
+  --cyan:#00e5ff;
+  --cyan2:#00b4d8;
+  --green:#00ff88;
+  --amber:#ffb700;
+  --purple:#bf7fff;
+  --red:#ff4757;
+  --text:#b0d4d8;
+  --muted:rgba(0,229,255,0.3);
+  --border:rgba(0,229,255,0.1);
+  --glow:0 0 20px rgba(0,229,255,0.4);
+}
+
+html,body{height:100%;overflow:hidden}
+
+body{
+  font-family:'Share Tech Mono',monospace;
+  background:var(--bg);
+  color:var(--text);
+}
+
+/* ── ANIMATED BG ── */
+.bg-grid{
+  position:fixed;inset:0;z-index:0;
+  background-image:
+    linear-gradient(rgba(0,229,255,0.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,229,255,0.03) 1px,transparent 1px);
+  background-size:50px 50px;
+  animation:gridshift 20s linear infinite;
+}
+@keyframes gridshift{to{background-position:50px 50px}}
+
+.scanlines{
+  position:fixed;inset:0;z-index:1;pointer-events:none;
+  background:repeating-linear-gradient(
+    0deg,transparent,transparent 3px,
+    rgba(0,0,0,0.15) 3px,rgba(0,0,0,0.15) 4px);
+}
+
+/* Corner brackets */
+.corner{position:fixed;width:60px;height:60px;z-index:100;opacity:0.6}
+.c-tl{top:0;left:0;border-top:1px solid var(--cyan);border-left:1px solid var(--cyan)}
+.c-tr{top:0;right:0;border-top:1px solid var(--cyan);border-right:1px solid var(--cyan)}
+.c-bl{bottom:0;left:0;border-bottom:1px solid var(--cyan);border-left:1px solid var(--cyan)}
+.c-br{bottom:0;right:0;border-bottom:1px solid var(--cyan);border-right:1px solid var(--cyan)}
+
+/* ── LAYOUT ── */
+.app{
+  position:relative;z-index:10;
+  display:grid;
+  grid-template-rows:52px 1fr;
+  grid-template-columns:1fr 400px;
+  height:100vh;
+}
+
+/* ── HEADER ── */
+header{
+  grid-column:1/-1;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;
+  background:rgba(0,0,0,0.8);
+  border-bottom:1px solid var(--border);
+  backdrop-filter:blur(20px);
+}
+
+.logo{
+  font-family:'Orbitron',monospace;font-size:13px;font-weight:900;
+  letter-spacing:5px;color:var(--cyan);
+  text-shadow:0 0 30px rgba(0,229,255,0.8);
+  display:flex;align-items:center;gap:10px;
+}
+.logo-pulse{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--cyan);box-shadow:0 0 12px var(--cyan);
+  animation:pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(0.6);opacity:0.4}}
+
+.hud{
+  display:flex;align-items:center;gap:20px;
+  font-size:10px;color:var(--muted);letter-spacing:2px;
+}
+.hud-item{display:flex;align-items:center;gap:6px}
+.hud-val{color:var(--cyan);font-weight:700}
+.hud-dot{width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 1s infinite}
+
+.btn-wallet{
+  font-family:'Orbitron',monospace;font-size:9px;font-weight:700;
+  letter-spacing:2px;padding:7px 16px;
+  background:transparent;
+  border:1px solid rgba(0,229,255,0.35);
+  color:var(--cyan);cursor:pointer;
+  transition:all 0.2s;text-transform:uppercase;
+  clip-path:polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%);
+}
+.btn-wallet:hover{background:rgba(0,229,255,0.08);border-color:var(--cyan);box-shadow:var(--glow)}
+.btn-wallet.ok{border-color:rgba(0,255,136,0.5);color:var(--green)}
+
+/* ── LEFT: TERMINAL ── */
+.left{
+  display:flex;flex-direction:column;
+  border-right:1px solid var(--border);
+  overflow:hidden;
+}
+
+.stats-bar{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.stat{
+  padding:10px 16px;border-right:1px solid var(--border);
+  position:relative;overflow:hidden;
+}
+.stat:last-child{border-right:none}
+.stat::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--cyan),transparent);
+  opacity:0;transition:opacity 0.3s;
+}
+.stat:hover::before{opacity:1}
+.stat-l{font-size:8px;letter-spacing:2px;color:var(--muted);margin-bottom:3px;text-transform:uppercase}
+.stat-v{font-family:'Orbitron',monospace;font-size:20px;font-weight:700;color:var(--cyan);line-height:1;text-shadow:0 0 10px rgba(0,229,255,0.5)}
+.stat-v.g{color:var(--green);text-shadow:0 0 10px rgba(0,255,136,0.5)}
+.stat-v.a{color:var(--amber);text-shadow:0 0 10px rgba(255,183,0,0.5)}
+.stat-v.p{color:var(--purple);text-shadow:0 0 10px rgba(191,127,255,0.5)}
+
+.terminal-wrap{flex:1;overflow:hidden;position:relative}
+.terminal{
+  height:100%;overflow-y:auto;
+  padding:14px 18px;
+  font-size:11.5px;line-height:2;
+}
+.terminal::-webkit-scrollbar{width:2px}
+.terminal::-webkit-scrollbar-thumb{background:rgba(0,229,255,0.15)}
+
+.tline{
+  display:flex;gap:8px;
+  animation:fadein 0.25s ease;
+}
+@keyframes fadein{from{opacity:0;transform:translateY(3px)}to{opacity:1}}
+
+.ttime{color:rgba(0,229,255,0.25);flex-shrink:0;font-size:10px;padding-top:1px}
+.ttag{
+  flex-shrink:0;font-size:9px;letter-spacing:1px;
+  padding:1px 6px;font-weight:700;align-self:flex-start;margin-top:2px;
+}
+.ttag.sys{color:var(--cyan);border:1px solid rgba(0,229,255,0.2)}
+.ttag.agent{color:var(--green);border:1px solid rgba(0,255,136,0.2)}
+.ttag.chain{color:var(--purple);border:1px solid rgba(191,127,255,0.2)}
+.ttag.warn{color:var(--amber);border:1px solid rgba(255,183,0,0.2)}
+.ttag.err{color:var(--red);border:1px solid rgba(255,71,87,0.2)}
+
+.tmsg{flex:1;color:var(--text)}
+.tmsg.hi{color:var(--cyan)}
+.tmsg.g{color:var(--green)}
+.tmsg.p{color:var(--purple)}
+.tmsg.a{color:var(--amber)}
+
+.cursor{
+  display:inline-block;width:7px;height:11px;
+  background:var(--cyan);vertical-align:middle;margin-left:3px;
+  animation:cblink 1s step-end infinite;
+}
+@keyframes cblink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── RIGHT: AGENT + FORM + QUEUE ── */
+.right{
+  display:flex;flex-direction:column;
+  background:rgba(0,0,0,0.3);overflow:hidden;
+}
+
+/* Agent block */
+.agent-block{
+  padding:14px 18px;
+  border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.agent-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.agent-orb{
+  width:38px;height:38px;
+  border:1px solid rgba(0,255,136,0.3);
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  position:relative;flex-shrink:0;
+}
+.agent-orb::before,.agent-orb::after{
+  content:'';position:absolute;border:1px solid rgba(0,255,136,0.12);
+}
+.agent-orb::before{inset:-5px;animation:spin 5s linear infinite}
+.agent-orb::after{inset:-10px;animation:spin 8s linear infinite reverse}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.agent-name{font-family:'Orbitron',monospace;font-size:10px;font-weight:700;color:var(--green);letter-spacing:2px}
+.agent-sub{font-size:8px;color:rgba(0,255,136,0.35);letter-spacing:1px;margin-top:2px}
+
+.pbar-wrap{margin-bottom:4px}
+.pbar-bg{height:2px;background:rgba(0,255,136,0.08);position:relative;overflow:hidden}
+.pbar-fill{
+  height:100%;background:linear-gradient(90deg,var(--green),var(--cyan));
+  transition:width 0.5s ease;box-shadow:0 0 8px rgba(0,255,136,0.6);
+}
+.pbar-label{font-size:8px;color:var(--muted);letter-spacing:1px;margin-top:3px;text-transform:uppercase}
+
+/* Section header */
+.sec-hdr{
+  font-size:8px;letter-spacing:3px;text-transform:uppercase;
+  color:var(--muted);margin-bottom:10px;
+  display:flex;align-items:center;gap:8px;
+}
+.sec-hdr::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,rgba(0,229,255,0.15),transparent)}
+
+/* Form */
+.form-block{
+  padding:14px 18px;
+  border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.flabel{font-size:8px;letter-spacing:2px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;display:block}
+.finput,.ftextarea{
+  width:100%;
+  background:rgba(0,229,255,0.02);
+  border:1px solid rgba(0,229,255,0.1);
+  padding:7px 10px;
+  font-family:'Share Tech Mono',monospace;font-size:11px;
+  color:var(--text);outline:none;transition:border-color 0.2s;
+  margin-bottom:8px;
+}
+.finput:focus,.ftextarea:focus{border-color:rgba(0,229,255,0.35);background:rgba(0,229,255,0.04)}
+.finput::placeholder,.ftextarea::placeholder{color:rgba(0,229,255,0.15)}
+.ftextarea{resize:none;min-height:60px;line-height:1.6}
+
+.reward-row{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.reward-row .finput{margin-bottom:0;width:80px;flex-shrink:0}
+.reward-unit{font-size:9px;color:var(--muted);letter-spacing:1px}
+
+.btn-deploy{
+  width:100%;padding:10px;
+  font-family:'Orbitron',monospace;font-size:9px;font-weight:700;
+  letter-spacing:3px;text-transform:uppercase;
+  background:transparent;
+  border:1px solid rgba(0,229,255,0.25);color:var(--cyan);
+  cursor:pointer;transition:all 0.2s;position:relative;overflow:hidden;
+}
+.btn-deploy::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(0,229,255,0.06),transparent);
+  transform:translateX(-100%);transition:0.4s;
+}
+.btn-deploy:not(:disabled):hover::before{transform:translateX(100%)}
+.btn-deploy:not(:disabled):hover{border-color:var(--cyan);box-shadow:0 0 16px rgba(0,229,255,0.2)}
+.btn-deploy:disabled{opacity:0.3;cursor:not-allowed}
+
+/* Queue */
+.queue-block{flex:1;overflow-y:auto;padding:14px 18px}
+.queue-block::-webkit-scrollbar{width:2px}
+.queue-block::-webkit-scrollbar-thumb{background:rgba(0,229,255,0.1)}
+
+.qitem{
+  border:1px solid rgba(0,229,255,0.07);
+  margin-bottom:6px;padding:9px 10px;cursor:pointer;
+  transition:all 0.15s;position:relative;
+}
+.qitem::before{
+  content:'';position:absolute;left:0;top:0;bottom:0;width:2px;
+  background:rgba(0,229,255,0.15);transition:0.2s;
+}
+.qitem:hover::before,.qitem.sel::before{background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
+.qitem:hover,.qitem.sel{background:rgba(0,229,255,0.03);border-color:rgba(0,229,255,0.18)}
+
+.qi-row{display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:4px}
+.qi-title{font-size:10px;color:var(--text);line-height:1.4;flex:1}
+.qi-reward{font-size:10px;color:var(--green);font-weight:700;white-space:nowrap}
+.qi-meta{display:flex;align-items:center;gap:6px}
+.qi-id{font-size:8px;color:rgba(0,229,255,0.2)}
+
+.badge{font-size:7px;letter-spacing:1px;padding:1px 5px;text-transform:uppercase;font-weight:700}
+.b-open{border:1px solid rgba(0,229,255,0.2);color:rgba(0,229,255,0.6)}
+.b-proc{border:1px solid rgba(255,183,0,0.35);color:var(--amber);animation:glow-a 1.5s infinite}
+@keyframes glow-a{0%,100%{box-shadow:none}50%{box-shadow:0 0 5px rgba(255,183,0,0.4)}}
+.b-done{border:1px solid rgba(191,127,255,0.35);color:var(--purple)}
+.b-ok{border:1px solid rgba(0,255,136,0.35);color:var(--green)}
+.b-err{border:1px solid rgba(255,71,87,0.25);color:var(--red)}
+.b-cancel{border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.3)}
+
+/* Approve btn in terminal */
+.btn-approve{
+  margin-top:4px;padding:5px 12px;
+  font-family:'Orbitron',monospace;font-size:8px;font-weight:700;letter-spacing:2px;
+  background:transparent;border:1px solid rgba(0,255,136,0.3);color:var(--green);
+  cursor:pointer;transition:all 0.2s;
+}
+.btn-approve:hover{background:rgba(0,255,136,0.08);border-color:var(--green);box-shadow:0 0 10px rgba(0,255,136,0.2)}
+
+/* Toast */
+#toast{
+  position:fixed;bottom:20px;left:50%;
+  transform:translateX(-50%) translateY(16px);
+  z-index:9999;font-family:'Share Tech Mono',monospace;font-size:10px;
+  letter-spacing:1px;padding:9px 18px;border:1px solid;
+  opacity:0;transition:all 0.3s;text-align:center;pointer-events:none;
+  backdrop-filter:blur(10px);
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.info{background:rgba(0,229,255,0.07);border-color:rgba(0,229,255,0.35);color:var(--cyan)}
+#toast.ok{background:rgba(0,255,136,0.07);border-color:rgba(0,255,136,0.35);color:var(--green)}
+#toast.err{background:rgba(255,71,87,0.07);border-color:rgba(255,71,87,0.35);color:var(--red)}
+
+/* Result overlay */
+#resultModal{
+  display:none;position:fixed;inset:0;z-index:500;
+  background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);
+  align-items:center;justify-content:center;
+}
+#resultModal.open{display:flex}
+.modal-box{
+  background:var(--surface);border:1px solid rgba(0,229,255,0.2);
+  width:620px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;
+  box-shadow:0 0 60px rgba(0,229,255,0.1);
+}
+.modal-hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 18px;border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.modal-title{font-family:'Orbitron',monospace;font-size:10px;font-weight:700;color:var(--cyan);letter-spacing:2px}
+.modal-close{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0 4px;transition:color 0.2s}
+.modal-close:hover{color:var(--red)}
+.modal-body{flex:1;overflow-y:auto;padding:18px;font-size:11px;line-height:2;color:var(--text)}
+.modal-body::-webkit-scrollbar{width:2px}
+.modal-body::-webkit-scrollbar-thumb{background:rgba(0,229,255,0.15)}
+.modal-footer{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:10px;flex-shrink:0}
+
+@media(max-width:800px){
+  .app{grid-template-columns:1fr;grid-template-rows:52px 1fr}
+  .right{display:none}
+  .stats-bar{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+<div class="bg-grid"></div>
+<div class="scanlines"></div>
+<div class="corner c-tl"></div>
+<div class="corner c-tr"></div>
+<div class="corner c-bl"></div>
+<div class="corner c-br"></div>
+
+<div class="app">
+
+<!-- ══ HEADER ══════════════════════════════ -->
+<header>
+  <div class="logo">
+    <div class="logo-pulse"></div>
+    SIGNAL BOUNTIES
+  </div>
+  <div class="hud">
+    <div class="hud-item"><span class="hud-dot"></span> ARC TESTNET</div>
+    <div class="hud-item">CHAIN <span class="hud-val">5042002</span></div>
+    <div class="hud-item">BLOCK <span class="hud-val" id="blockNum">···</span></div>
+    <div class="hud-item">GAS <span class="hud-val">~$0.01 USDC</span></div>
+  </div>
+  <button class="btn-wallet" id="walletBtn" onclick="connectWallet()">[ CONNECT WALLET ]</button>
+</header>
+
+<!-- ══ LEFT: TERMINAL ══════════════════════ -->
+<div class="left">
+  <div class="stats-bar">
+    <div class="stat">
+      <div class="stat-l">Total Tasks</div>
+      <div class="stat-v" id="sTotal">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-l">Processing</div>
+      <div class="stat-v a" id="sProc">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-l">Approved</div>
+      <div class="stat-v g" id="sOk">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-l">USDC Locked</div>
+      <div class="stat-v p" id="sUsdc">0.0</div>
+    </div>
+  </div>
+
+  <div class="terminal-wrap">
+    <div class="terminal" id="terminal"></div>
+  </div>
+</div>
+
+<!-- ══ RIGHT: AGENT + FORM + QUEUE ══════════ -->
+<div class="right">
+
+  <!-- Agent -->
+  <div class="agent-block">
+    <div class="agent-head">
+      <div class="agent-orb">🤖</div>
+      <div>
+        <div class="agent-name">AI AGENT v3</div>
+        <div class="agent-sub">CLAUDE → GEMINI → GROQ FALLBACK</div>
+      </div>
+    </div>
+    <div class="pbar-wrap">
+      <div class="pbar-bg"><div class="pbar-fill" id="pbar" style="width:0%"></div></div>
+      <div class="pbar-label" id="pbarLabel">STANDBY — OCZEKIWANIE NA TASK</div>
+    </div>
+  </div>
+
+  <!-- Form -->
+  <div class="form-block">
+    <div class="sec-hdr">Deploy New Task</div>
+    <label class="flabel">Tytuł zadania</label>
+    <input type="text" class="finput" id="fTitle" placeholder="np. Analiza BTC/ETH na dziś" maxlength="100"/>
+    <label class="flabel">Instrukcja dla agenta AI</label>
+    <textarea class="ftextarea" id="fDesc" placeholder="Co agent ma zrobić? Im dokładniej, tym lepiej..."></textarea>
+    <label class="flabel">Nagroda</label>
+    <div class="reward-row">
+      <input type="number" class="finput" id="fReward" value="1" min="0.1" step="0.1"/>
+      <span class="reward-unit">USDC TESTNET</span>
+    </div>
+    <button class="btn-deploy" id="deployBtn" onclick="createTask()" disabled>
+      ⚡ DEPLOY TASK + LOCK USDC
+    </button>
+  </div>
+
+  <!-- Queue -->
+  <div class="queue-block">
+    <div class="sec-hdr">Task Queue</div>
+    <div id="queueList">
+      <div style="font-size:9px;color:rgba(0,229,255,0.15);text-align:center;padding:24px;letter-spacing:3px">[ NO TASKS ]</div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /app -->
+
+<!-- Result modal -->
+<div id="resultModal">
+  <div class="modal-box">
+    <div class="modal-hdr">
+      <span class="modal-title" id="modalTitle">AGENT RESULT</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer">
+      <button class="btn-approve" id="modalApproveBtn" onclick="approveTask()">✅ APPROVE &amp; RELEASE USDC</button>
+      <button class="btn-approve" style="border-color:rgba(255,71,87,0.3);color:var(--red)" onclick="closeModal()">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════
+// ⚙️ KONFIGURACJA — zmień przed deployem
+// ════════════════════════════════════════════
+const CFG = {
+  BACKEND: 'https://timer-planner-validation-airline.trycloudflare.com',           // ← Twój VPS IP lub domena z portem
+  CONTRACT: '0x7B4716E3cE0d48C2852F6aDAFB7046fEfc30401f',        // ← z Remix po deployu
+  CHAIN_ID: 5042002,
+  RPC:      'https://rpc.testnet.arc.network',
+  USDC:     '0x3600000000000000000000000000000000000000',
+  EXPLORER: 'https://testnet.arcscan.app',
+  FB: {
+    apiKey:            'AIzaSyDc2wCOebmycsTSfWez9fYBllTo7Yq0QSI',     // ← z Firebase Console
+    authDomain:        'signal-bounties.firebaseapp.com',
+    projectId:         'signal-bounties',
+    storageBucket:     'signal-bounties.appspot.com',
+    messagingSenderId: '776820932558',
+    appId:             '1:776820932558:web:7dfb7484a221a84e74f59f',
+  }
+};
+
+const C_ABI = [
+  'function createTask(string,string,uint256) returns (uint256)',
+  'function approveResult(uint256)',
+];
+const U_ABI = [
+  'function approve(address,uint256) returns (bool)',
+  'function allowance(address,address) view returns (uint256)',
+];
+
+// ─── STATE ─────────────────────────────────
+let wallet=null, signer=null, cContract=null, uContract=null;
+let tasks=[], selectedTaskId=null;
+
+// ─── TERMINAL ──────────────────────────────
+const term = document.getElementById('terminal');
+
+function log(tag, msg, cls='') {
+  const t = new Date().toTimeString().slice(0,8);
+  const el = document.createElement('div');
+  el.className = 'tline';
+  el.innerHTML = `<span class="ttime">${t}</span><span class="ttag ${tag}">${tag.toUpperCase()}</span><span class="tmsg ${cls}">${msg}</span>`;
+  term.appendChild(el);
+  term.scrollTop = term.scrollHeight;
+  return el;
+}
+
+function logType(tag, text, cls='') {
+  const t = new Date().toTimeString().slice(0,8);
+  const el = document.createElement('div');
+  el.className = 'tline';
+  const msgEl = document.createElement('span');
+  msgEl.className = `tmsg ${cls}`;
+  el.innerHTML = `<span class="ttime">${t}</span><span class="ttag ${tag}">${tag.toUpperCase()}</span>`;
+  el.appendChild(msgEl);
+  term.appendChild(el);
+  let i=0;
+  const iv = setInterval(()=>{
+    msgEl.textContent = text.slice(0,++i);
+    term.scrollTop = term.scrollHeight;
+    if(i>=text.length) {
+      clearInterval(iv);
+      const cur=document.createElement('span');cur.className='cursor';
+      msgEl.appendChild(cur);setTimeout(()=>cur.remove(),2500);
+    }
+  }, 16);
+  return el;
+}
+
+// ─── AGENT BAR ─────────────────────────────
+function setAgent(txt, pct) {
+  document.getElementById('pbar').style.width = pct+'%';
+  document.getElementById('pbarLabel').textContent = txt;
+}
+
+async function animateAgent(taskTitle) {
+  const steps = [
+    [8,  'INICJALIZACJA AGENTA...'],
+    [22, 'POBIERANIE TASKA Z FIRESTORE...'],
+    [38, 'ŁĄCZENIE Z CLAUDE HAIKU...'],
+    [58, 'AI PRZETWARZA DANE...'],
+    [75, 'GENEROWANIE ODPOWIEDZI...'],
+    [90, 'SUBMIT RESULT ON-CHAIN...'],
+    [100,'ZAKOŃCZONO ✓'],
+  ];
+  for(const [p,t] of steps) {
+    setAgent(t,p);
+    await sleep(500+Math.random()*300);
+  }
+  await sleep(1800);
+  setAgent('STANDBY — OCZEKIWANIE NA TASK', 0);
+}
+
+// ─── BLOCK NUMBER ──────────────────────────
+async function pollBlock() {
+  try {
+    const r = await fetch(CFG.RPC,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_blockNumber',params:[]})});
+    const d=await r.json();
+    document.getElementById('blockNum').textContent = parseInt(d.result,16).toLocaleString();
+  } catch(e){}
+}
+pollBlock();setInterval(pollBlock,2000);
+
+// ─── WALLET ────────────────────────────────
+async function connectWallet() {
+  if(!window.ethereum){toast('Zainstaluj MetaMask!','err');return}
+  try {
+    await window.ethereum.request({method:'eth_requestAccounts'});
+    try {
+      await window.ethereum.request({method:'wallet_switchEthereumChain',
+        params:[{chainId:'0x'+CFG.CHAIN_ID.toString(16)}]});
+    } catch(sw){
+      if(sw.code===4902) {
+        await window.ethereum.request({method:'wallet_addEthereumChain',params:[{
+          chainId:'0x'+CFG.CHAIN_ID.toString(16),chainName:'Arc Testnet',
+          nativeCurrency:{name:'USDC',symbol:'USDC',decimals:18},
+          rpcUrls:[CFG.RPC],blockExplorerUrls:[CFG.EXPLORER]
+        }]});
+      }
+    }
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    signer = await provider.getSigner();
+    wallet = await signer.getAddress();
+    cContract = new ethers.Contract(CFG.CONTRACT, C_ABI, signer);
+    uContract = new ethers.Contract(CFG.USDC, U_ABI, signer);
+
+    const btn=document.getElementById('walletBtn');
+    btn.textContent=`[ ${wallet.slice(0,6)}...${wallet.slice(-4)} ]`;
+    btn.classList.add('ok');
+    document.getElementById('deployBtn').disabled=false;
+
+    log('sys',`Wallet: ${wallet}`,'g');
+    log('chain','Arc Testnet connected ✓','p');
+    toast('Wallet połączony ✓','ok');
+  } catch(e){
+    log('err','Błąd połączenia: '+e.message);
+    toast('Błąd: '+e.message,'err');
+  }
+}
+
+// ─── CREATE TASK ────────────────────────────
+async function createTask() {
+  if(!wallet){toast('Połącz wallet!','err');return}
+  const title=document.getElementById('fTitle').value.trim();
+  const desc=document.getElementById('fDesc').value.trim();
+  const reward=parseFloat(document.getElementById('fReward').value);
+  if(!title){toast('Wpisz tytuł','err');return}
+  if(!desc){toast('Opisz zadanie','err');return}
+  if(!reward||reward<0.1){toast('Min 0.1 USDC','err');return}
+
+  const btn=document.getElementById('deployBtn');
+  btn.disabled=true;btn.textContent='⟳ APPROVE USDC...';
+
+  try {
+    const amount=ethers.parseUnits(reward.toFixed(6),6);
+    log('chain','Approve USDC → kontrakt...');
+    toast('Krok 1/2 — zatwierdź USDC w MetaMask','info');
+    const aTx=await uContract.approve(CFG.CONTRACT,amount);
+    await aTx.wait();
+    log('chain','USDC approved ✓','p');
+
+    btn.textContent='⟳ DEPLOY ON-CHAIN...';
+    log('chain','createTask() → Arc Testnet...');
+    toast('Krok 2/2 — deploy task on-chain','info');
+    const tx=await cContract.createTask(title,desc,amount);
+    const receipt=await tx.wait();
+    log('chain',`TX confirmed: ${tx.hash.slice(0,18)}...`,'p');
+    logType('agent',`Odbieram task "${title}" — uruchamiam agenta AI...`,'g');
+
+    // Lokalny dodaj (Firebase dotrze za chwilę)
+    tasks.unshift({id:Date.now()%99999,title,description:desc,reward:reward.toFixed(1),status:'processing',agentResult:''});
+    renderQueue();updateStats();
+    animateAgent(title);
+
+    document.getElementById('fTitle').value='';
+    document.getElementById('fDesc').value='';
+    toast('Task zadeploy owany ✓','ok');
+  } catch(e){
+    log('err','Błąd: '+(e.reason||e.message));
+    toast('Błąd: '+(e.reason||e.message),'err');
+  }
+  btn.disabled=false;btn.textContent='⚡ DEPLOY TASK + LOCK USDC';
+}
+
+// ─── APPROVE ────────────────────────────────
+let approveTaskId=null;
+async function approveTask() {
+  if(!wallet||!approveTaskId){return}
+  try {
+    toast('Zatwierdzam on-chain...','info');
+    const tx=await cContract.approveResult(approveTaskId);
+    await tx.wait();
+    log('chain',`Task #${approveTaskId} zatwierdzony → USDC uwolniony ✓`,'g');
+    toast('USDC uwolniony ✓','ok');
+    closeModal();
+  } catch(e){toast('Błąd: '+(e.reason||e.message),'err')}
+}
+
+// ─── QUEUE ──────────────────────────────────
+function renderQueue() {
+  const el=document.getElementById('queueList');
+  if(!tasks.length){
+    el.innerHTML='<div style="font-size:9px;color:rgba(0,229,255,0.15);text-align:center;padding:24px;letter-spacing:3px">[ NO TASKS ]</div>';
+    return;
+  }
+  el.innerHTML=tasks.map(t=>`
+    <div class="qitem${selectedTaskId==t.id?' sel':''}" onclick="openTask(${t.id})">
+      <div class="qi-row">
+        <div class="qi-title">${esc(t.title||'—')}</div>
+        <div class="qi-reward">${t.reward} USDC</div>
+      </div>
+      <div class="qi-meta">
+        <span class="qi-id">#${t.id}</span>
+        <span class="badge ${bCls(t.status)}">${t.status||'open'}</span>
+        ${t.modelUsed?`<span style="font-size:8px;color:rgba(0,229,255,0.25)">🤖 ${t.modelUsed}</span>`:''}
+      </div>
+    </div>`).join('');
+}
+
+function bCls(s){return{open:'b-open',processing:'b-proc',completed:'b-done',approved:'b-ok',error:'b-err',cancelled:'b-cancel'}[s]||'b-open'}
+
+function openTask(id) {
+  selectedTaskId=id;
+  const t=tasks.find(x=>x.id==id);
+  if(!t) return;
+  renderQueue();
+
+  const isOwn = wallet && t.poster?.toLowerCase()===wallet.toLowerCase();
+  const canApprove = isOwn && t.status==='completed';
+  approveTaskId = canApprove ? id : null;
+
+  document.getElementById('modalTitle').textContent=`TASK #${id} — ${t.status?.toUpperCase()}`;
+  document.getElementById('modalBody').innerHTML=`
+    <div style="margin-bottom:12px">
+      <div style="font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:3px">TYTUŁ</div>
+      <div style="color:var(--cyan);font-size:12px">${esc(t.title)}</div>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:3px">OPIS</div>
+      <div style="font-size:10px;line-height:1.8">${esc(t.description||'—')}</div>
+    </div>
+    ${t.agentResult?`
+    <div style="margin-bottom:12px">
+      <div style="font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:6px">🤖 WYNIK AGENTA AI ${t.modelUsed?'('+t.modelUsed+')':''}</div>
+      <div style="background:rgba(0,229,255,0.03);border:1px solid rgba(0,229,255,0.1);padding:12px;font-size:10px;line-height:2;color:var(--text);white-space:pre-wrap">${esc(t.agentResult)}</div>
+    </div>`:'<div style="color:var(--muted);font-size:10px;padding:20px 0;text-align:center">⟳ Agent pracuje...</div>'}
+    ${t.chainTxHash?`<div style="font-size:8px;color:rgba(0,229,255,0.3);margin-top:8px;word-break:break-all">TX: ${t.chainTxHash}</div>`:''}
+  `;
+  document.getElementById('modalApproveBtn').style.display = canApprove?'':'none';
+  document.getElementById('resultModal').classList.add('open');
+
+  // Log w terminalu
+  log('sys',`Otwarto task #${id}: "${t.title}"`,'hi');
+  if(t.agentResult) logType('agent',t.agentResult.slice(0,160)+(t.agentResult.length>160?'...':''),'g');
+}
+
+function closeModal(){
+  document.getElementById('resultModal').classList.remove('open');
+  selectedTaskId=null;renderQueue();
+}
+
+document.getElementById('resultModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal()});
+
+function updateStats() {
+  document.getElementById('sTotal').textContent=tasks.length;
+  document.getElementById('sProc').textContent=tasks.filter(t=>t.status==='processing').length;
+  document.getElementById('sOk').textContent=tasks.filter(t=>t.status==='approved').length;
+  const u=tasks.reduce((s,t)=>s+parseFloat(t.reward||0),0);
+  document.getElementById('sUsdc').textContent=u.toFixed(1);
+}
+
+// ─── FIREBASE ──────────────────────────────
+async function initFB() {
+  try {
+    const {initializeApp}=await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js');
+    const {getFirestore,collection,onSnapshot,orderBy,query,limit}=await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+    const app=initializeApp(CFG.FB);
+    const db=getFirestore(app);
+    const q=query(collection(db,'tasks'),orderBy('createdAt','desc'),limit(30));
+    onSnapshot(q,snap=>{
+      tasks=[];snap.forEach(d=>tasks.push(d.data()));
+      renderQueue();updateStats();
+    });
+    log('sys','Firebase realtime sync — aktywny','g');
+  } catch(e){
+    log('warn','Firebase niedostępny — tryb demo');
+    demoTasks();
+  }
+}
+
+function demoTasks() {
+  tasks=[
+    {id:1,title:'Analiza BTC/ETH — setup tygodniowy',reward:'5.0',status:'approved',agentResult:'BTC utrzymuje kluczowe wsparcie na poziomie 67,000 USDC. RSI na poziomie 52 wskazuje na neutralny momentum. ETH/BTC para testuje opór 0.055 — przełamanie otworzy drogę do 0.058. Rekomendacja: HOLD pozycje long z SL poniżej 65,500.',modelUsed:'claude-haiku'},
+    {id:2,title:'Whale alert: duże ruchy na SOL',reward:'3.0',status:'processing',agentResult:''},
+    {id:3,title:'Sygnał dla PEPE/USDT — wejście?',reward:'2.0',status:'completed',agentResult:'PEPE tworzy pattern double bottom na 1h wykresie. Volume rośnie. Potencjalne wejście long z TP na +15% i SL -5%.',modelUsed:'gemini-flash'},
+    {id:4,title:'Analiza narratywu AI coins',reward:'1.5',status:'open',agentResult:''},
+  ];
+  renderQueue();updateStats();
+  log('agent','Demo mode — przykładowe taski załadowane','g');
+}
+
+// ─── HELPERS ───────────────────────────────
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+let toastT;
+function toast(msg,type='info'){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.className=`show ${type}`;
+  clearTimeout(toastT);toastT=setTimeout(()=>el.className='',3500);
+}
+
+// ─── BOOT ──────────────────────────────────
+const BOOT=[
+  ['sys','Signal Bounties Terminal v3.0 — boot sequence...','hi'],
+  ['sys','Arc Testnet RPC: https://rpc.testnet.arc.network',''],
+  ['chain','Chain ID: 5042002 | Block ~0.48s | Gas: ~$0.01 USDC','p'],
+  ['sys','Firestore sync layer — initializing...',''],
+  ['agent','AI Agent online: Claude Haiku → Gemini Flash → Groq','g'],
+  ['sys','System ready. Połącz wallet aby tworzyć taski.','hi'],
+];
+BOOT.forEach(([tag,msg,cls],i)=>setTimeout(()=>log(tag,msg,cls),i*280));
+setTimeout(initFB,1800);
+</script>
+</body>
+</html>
